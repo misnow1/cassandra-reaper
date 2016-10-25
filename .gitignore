@@ -13,3 +13,5 @@ dependency-reduced-pom.xml
 # Mac OS X Finder
 .DS_Store
 
+# Maven RPM build dependencies
+lib/*

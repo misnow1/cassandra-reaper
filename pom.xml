@@ -15,6 +15,11 @@
         <dropwizard.version>0.7.1</dropwizard.version>
         <cassandra.version>2.0.12</cassandra.version>
         <cucumber.version>1.1.5</cucumber.version>
+        <build.number>SNAPSHOT</build.number>
+        <cassandra-reaper.baseDir>/opt/cassandra-reaper</cassandra-reaper.baseDir>
+        <cassandra-reaper.username>reaper</cassandra-reaper.username>
+        <cassandra-reaper.groupname>reaper</cassandra-reaper.groupname>
+        <cassandra-reaper.serviceName>cassandra-reaper</cassandra-reaper.serviceName>
     </properties>
 
     <dependencies>
@@ -148,6 +153,138 @@
                                 </transformer>
                             </transformers>
                         </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>2.9</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>lib/</outputDirectory>
+                            <includeScope>runtime</includeScope> <!-- excludes test jars; see http://jira.codehaus.org/browse/MDEP-128 -->
+                            <excludeScope>provided</excludeScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>rpm-maven-plugin</artifactId>
+                <version>2.1-alpha-4</version>
+
+                <configuration>
+                    <group>System Environment/Base</group>
+                    <targetVendor>CentOS</targetVendor>
+                    <needarch>x86_64</needarch>
+                    <targetOS>linux</targetOS>
+                    <release>${build.number}</release>
+                    <name>${project.artifactId}</name>
+                    <requires>
+                        <require>/lib/lsb/init-functions</require>
+                    </requires>
+
+
+                    <mappings>
+                        <mapping>
+                            <directory>${cassandra-reaper.baseDir}/lib/</directory>
+                            <sources>
+                                <source>
+                                    <location>lib/</location>
+                                    <includes>
+                                        <include>**/*.jar</include>
+                                    </includes>
+                                </source>
+                            </sources>
+                            <username>${cassandra-reaper.username}</username>
+                            <groupname>${cassandra-reaper.groupname}</groupname>
+                        </mapping>
+                        <mapping>
+                            <directory>${cassandra-reaper.baseDir}/bin/</directory>
+                            <sources>
+                                <source>
+                                    <location>bin/</location>
+                                    <includes>
+                                        <include>**/*</include>
+                                    </includes>
+                                </source>
+                            </sources>
+                            <username>${cassandra-reaper.username}</username>
+                            <groupname>${cassandra-reaper.groupname}</groupname>
+                        </mapping>
+
+                        <mapping>
+                            <directory>${cassandra-reaper.baseDir}/conf/</directory>
+                            <sources>
+                                <source>
+                                    <location>resource/</location>
+                                    <includes>
+                                        <include>**/*</include>
+                                    </includes>
+                                </source>
+                            </sources>
+                            <username>${cassandra-reaper.username}</username>
+                            <groupname>${cassandra-reaper.groupname}</groupname>
+                        </mapping>
+                        <mapping>
+                            <directory>/var/log/cassandra-reaper/</directory>
+                            <username>${cassandra-reaper.username}</username>
+                            <groupname>${cassandra-reaper.groupname}</groupname>
+                        </mapping>
+                    </mappings>
+
+                    <defineStatements>
+                        <defineStatement>_cassandra_reaper_basedir ${cassandra-reaper.baseDir}</defineStatement>
+                        <defineStatement>_cassandra_reaper_user ${cassandra-reaper.username}</defineStatement>
+                        <defineStatement>_cassandra_reaper_group ${cassandra-reaper.groupname}</defineStatement>
+                    </defineStatements>
+
+                    <preinstallScriptlet>
+                        <script><![CDATA[
+                        %_sbindir/groupadd -r %{_cassandra_reaper_group} &>/dev/null || :
+                        %_sbindir/useradd -g %{_cassandra_reaper_group} -s /bin/bash -r \
+                        -d %{_cassandra_reaper_basedir} %{_cassandra_reaper_user} &>/dev/null || :
+                        ]]>
+                        </script>
+                    </preinstallScriptlet>
+                    <postinstallScriptlet>
+                        <script><![CDATA[
+                    ln -sf %{_cassandra_reaper_basedir}/resource/cassandra-reaper.init /etc/init.d/cassandra-reaper
+                    ln -sf %{_cassandra_reaper_basedir}/resource/cassandra-reaper.yaml /etc/cassandra-reaper.yaml
+                    chkconfig %{_cassandra_reaper_service} on
+                    ]]>
+                        </script>
+                    </postinstallScriptlet>
+                    <preremoveScriptlet>
+                        <script><![CDATA[
+                    if [ $1 = 0 ] ; then
+                        service cassandra-reaper stop > /dev/null 2>&1 || :
+                        chkconfig --del cassandra-reaper
+                    fi
+                    ]]>
+                        </script>
+                    </preremoveScriptlet>
+                    <postremoveScriptlet>
+                        <script><![CDATA[
+                    if [ "$1" -ge "1" ] ; then
+                        service cassandra-reaper restart >/dev/null 2>&1 || :
+                    fi
+                    ]]>
+                        </script>
+                    </postremoveScriptlet>
+
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>attached-rpm</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>
